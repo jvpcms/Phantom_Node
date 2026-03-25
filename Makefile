@@ -5,6 +5,7 @@ BUILD   = build
 
 help:
 	@echo "Makefile commands:"
+	@echo "  run            - compile and run the desktop C++ executable"
 	@echo "  build          - compile the sketch for ESP32"
 	@echo "  upload         - compile and upload to the board"
 	@echo "  monitor        - open live serial monitor (exit with Ctrl+C)"
@@ -12,6 +13,10 @@ help:
 	@echo ""
 	@echo "Override the serial port (default: /dev/ttyUSB0):"
 	@echo "  make flash PORT=/dev/ttyACM0"
+
+run:
+	g++ -std=c++17 -I. $(SKETCH)/main.cpp -o $(SKETCH)/phantom_node && \
+	./$(SKETCH)/phantom_node
 
 build:
 	arduino-cli compile --fqbn $(FQBN) \
@@ -35,4 +40,4 @@ flash: build
 		$(SKETCH)/ && \
 	arduino-cli monitor -p $(PORT) --config baudrate=115200
 
-.PHONY: build upload monitor flash help
+.PHONY: run build upload monitor flash help
