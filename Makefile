@@ -16,19 +16,20 @@ help:
 	@echo "  make flash PORT=/dev/ttyACM0"
 
 run:
-	g++ -std=c++17 -I$(SRC) $(SKETCH)/main.cpp -o $(SKETCH)/phantom_node && \
-	./$(SKETCH)/phantom_node
+	mkdir -p $(BUILD) && \
+	g++ -std=c++17 -I$(SRC) $(SKETCH)/main.cpp -o $(BUILD)/phantom_node && \
+	./$(BUILD)/phantom_node
 
 build:
 	arduino-cli compile --fqbn $(FQBN) \
 		--build-property "compiler.cpp.extra_flags=-I$(CURDIR)/$(SRC)" \
-		--output-dir $(BUILD) \
+		--output-dir $(CURDIR)/$(BUILD) \
 		$(SKETCH)/
 
 upload: build
 	arduino-cli upload --fqbn $(FQBN) -p $(PORT) \
 		--upload-field upload.speed=57600 \
-		--input-dir $(BUILD) \
+		--input-dir $(CURDIR)/$(BUILD) \
 		$(SKETCH)/
 
 monitor:
@@ -37,7 +38,7 @@ monitor:
 flash: build
 	arduino-cli upload --fqbn $(FQBN) -p $(PORT) \
 		--upload-field upload.speed=57600 \
-		--input-dir $(BUILD) \
+		--input-dir $(CURDIR)/$(BUILD) \
 		$(SKETCH)/ && \
 	arduino-cli monitor -p $(PORT) --config baudrate=115200
 
