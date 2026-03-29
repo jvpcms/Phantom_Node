@@ -44,6 +44,6 @@ flash: build
 	arduino-cli monitor -p $(PORT) --config baudrate=115200
 
 docs:
-	g++ -std=c++17 build_docs.cpp -o $(BUILD)/build_docs && ./$(BUILD)/build_docs
+	mkdir -p $(BUILD) && g++ -std=c++17 build_docs.cpp -o $(BUILD)/build_docs && ./$(BUILD)/build_docs
 
 .PHONY: run build upload monitor flash docs help
