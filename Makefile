@@ -27,7 +27,7 @@ build:
 
 upload: build
 	arduino-cli upload --fqbn $(FQBN) -p $(PORT) \
-		--upload-field upload.speed=115200 \
+		--upload-field upload.speed=57600 \
 		--input-dir $(BUILD) \
 		$(SKETCH)/
 
@@ -36,7 +36,7 @@ monitor:
 
 flash: build
 	arduino-cli upload --fqbn $(FQBN) -p $(PORT) \
-		--upload-field upload.speed=115200 \
+		--upload-field upload.speed=57600 \
 		--input-dir $(BUILD) \
 		$(SKETCH)/ && \
 	arduino-cli monitor -p $(PORT) --config baudrate=115200
