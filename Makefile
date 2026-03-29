@@ -11,6 +11,7 @@ help:
 	@echo "  upload         - compile and upload to the board"
 	@echo "  monitor        - open live serial monitor (exit with Ctrl+C)"
 	@echo "  flash          - compile, upload and open serial monitor"
+	@echo "  docs           - generate docs.md from source headers"
 	@echo ""
 	@echo "Override the serial port (default: /dev/ttyUSB0):"
 	@echo "  make flash PORT=/dev/ttyACM0"
@@ -42,4 +43,7 @@ flash: build
 		$(SKETCH)/ && \
 	arduino-cli monitor -p $(PORT) --config baudrate=115200
 
-.PHONY: run build upload monitor flash help
+docs:
+	mkdir -p $(BUILD) && g++ -std=c++17 build_docs.cpp -o $(BUILD)/build_docs && ./$(BUILD)/build_docs
+
+.PHONY: run build upload monitor flash docs help
