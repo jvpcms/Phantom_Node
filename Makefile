@@ -1,7 +1,8 @@
 FQBN    = esp32:esp32:esp32
 PORT   ?= /dev/ttyUSB0
-SKETCH  = Phanton_Node
+SKETCH  = src/main
 BUILD   = build
+SRC     = src
 
 help:
 	@echo "Makefile commands:"
@@ -15,12 +16,12 @@ help:
 	@echo "  make flash PORT=/dev/ttyACM0"
 
 run:
-	g++ -std=c++17 -I. $(SKETCH)/main.cpp -o $(SKETCH)/phantom_node && \
+	g++ -std=c++17 -I$(SRC) $(SKETCH)/main.cpp -o $(SKETCH)/phantom_node && \
 	./$(SKETCH)/phantom_node
 
 build:
 	arduino-cli compile --fqbn $(FQBN) \
-		--build-property "compiler.cpp.extra_flags=-I$(CURDIR)" \
+		--build-property "compiler.cpp.extra_flags=-I$(CURDIR)/$(SRC)" \
 		--output-dir $(BUILD) \
 		$(SKETCH)/
 
