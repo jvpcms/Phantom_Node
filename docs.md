@@ -14,10 +14,12 @@ src/
 │   ├── docs.md
 │   ├── elliptic_curve_cryptography.hpp
 │   ├── main.cpp
-│   └── mpi_elliptic_curve_cryptography.hpp
+│   ├── mpi_elliptic_curve_cryptography.hpp
+│   └── nrf_elliptic_curve_cryptography.hpp
+├── desktop
+│   └── main.cpp
 ├── main
 │   ├── docs.md
-│   ├── main.cpp
 │   └── main.ino
 └── math
     ├── docs.md
@@ -294,6 +296,58 @@ Encodes message scalar as message * G.
 #### `MpiECPoint scalar_mul_G(long k) const`
 
 Multiplies the group generator G by scalar k. Uses result.grp.G directly.
+
+### `cryptography/nrf_elliptic_curve_cryptography.hpp`
+
+#### `// Raw 32-byte message or shared secret buffer. struct NrfBuffer`
+
+ECDH key exchange and XOR encryption using the nRF52840 CryptoCell-310.
+The nRFCrypto API wraps Nordic's CC310 hardware accelerator and provides:
+- genKeyPair    — hardware-generated P-256 key pair
+- SVDP_DH       — ECDH: computes x-coordinate of k*P as 32 raw bytes
+Public key serialisation note:
+CRYS_ECPKI_ExportPublKey outputs a valid 04||X||Y uncompressed point, but
+CRYS_ECPKI_BuildPublKey[PartlyCheck] fails to re-import it on this build of
+the precompiled CC310 library (mode-1 partial check returns an error; mode-0
+size-only check leaves the internal buffer uninitialised causing SVDP_DH to
+hang). Cross-device key exchange would require fixing this import path.
+For this demo both parties run on the same device, so computeSharedSecret()
+takes the peer's nRFCrypto_ECC_PublicKey object directly, bypassing the
+broken serialisation round-trip. getPublicKey() still serialises to a 65-byte
+buffer for logging and interoperability reference.
+Because CC310 does not expose raw point arithmetic, encryption and decryption
+are implemented as XOR with the 32-byte shared secret (a one-time pad), which
+is valid for messages up to 32 bytes.
+
+#### `class NrfECDHScheme`
+
+ECDH scheme over P-256 backed by CryptoCell-310.
+Each party calls begin() to generate a key pair, exchanges public keys via
+getPublicKey() (serialised for logging), then calls computeSharedSecret()
+with the peer's key object. The resulting 32-byte shared secret is used
+directly as a XOR key.
+
+#### `NrfPublicKey getPublicKey()`
+
+Returns this party's public key serialised as a 65-byte uncompressed point.
+
+#### `NrfBuffer computeSharedSecret(nRFCrypto_ECC_PublicKey& peer_pub)`
+
+Computes the shared secret from the peer's key object.
+Returns the x-coordinate of private_key * peer_public as 32 bytes.
+
+#### `nRFCrypto_ECC_PublicKey& publicKeyObj()`
+
+Exposes the internal public key object so the peer can call computeSharedSecret().
+
+#### `NrfBuffer encrypt(const NrfBuffer& message, const NrfBuffer& shared_secret)`
+
+Encrypts a message by XOR-ing it with the shared secret.
+XOR is its own inverse, so decrypt() is the same operation.
+
+---
+
+## desktop
 
 ---
 

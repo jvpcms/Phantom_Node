@@ -1,0 +1,2 @@
+adafruit-nrfutil>=0.5.3  # nRF52840 DFU flashing via arduino-cli
+pyserial>=3.5            # serial monitor (monitor.py)
