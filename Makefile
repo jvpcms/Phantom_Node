@@ -2,8 +2,8 @@ FQBN   = adafruit:nrf52:feather52840
 SKETCH = src/main
 BUILD  = build/nrf52840
 SRC    = src
-PORT1 ?= /dev/ttyACM0   # emitter
-PORT2 ?= /dev/ttyACM1   # receiver
+PORT1 ?= /dev/ttyACM1   # emitter
+PORT2 ?= /dev/ttyACM0   # receiver
 
 export PATH := $(CURDIR)/.venv/bin:$(PATH)
 

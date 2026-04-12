@@ -5,19 +5,17 @@
 class TransmitterLifeCycle : public LifeCycle {
 public:
     void startLifeCycle() override {
-        radioInit(RADIO_CHANNEL_EMIT);
+        radioInit(DISCOVERY_CHANNEL);
         startDiscoverable();
     }
 
 private:
     void startDiscoverable() {
-        // Build content: device_id + public_key
         HandshakePacket beacon;
         beacon.content.device_id[0] = 0xDE; beacon.content.device_id[1] = 0xAD;
         beacon.content.device_id[2] = 0xBE; beacon.content.device_id[3] = 0xEF;
         _crypto->getPublicKey(beacon.content.public_key);
 
-        // Sign the content bytes
         uint32_t sig_size = HandshakePacket::SIGNATURE_SIZE;
         _crypto->sign(
             reinterpret_cast<const uint8_t*>(&beacon.content),
@@ -29,19 +27,30 @@ private:
         static uint8_t rx_buf[HandshakePacket::SIZE];
         beacon.toBytes(tx_buf);
 
-        Serial.println("Discoverable: sending signed beacon...");
+        Log::println("=== Emitter ===");
         beacon.print();
 
         while (true) {
             txPacket(tx_buf);
-            Serial.println("Beacon sent, listening for 100ms...");
 
-            bool received = rxPacket(rx_buf, 100);
+            if (!rxPacket(rx_buf, BEACON_INTERVAL_MS)) continue;
 
-            if (received && memcmp(rx_buf, tx_buf, HandshakePacket::SIZE) == 0) {
-                Serial.println("Paired!");
-                return;
-            }
+            HandshakePacket response = HandshakePacket::fromBytes(rx_buf);
+
+            Log::println("=== Received handshake ===");
+            response.print();
+
+            bool valid = _crypto->verify(
+                reinterpret_cast<const uint8_t*>(&response.content),
+                HandshakePacket::CONTENT_SIZE,
+                response.signature,
+                HandshakePacket::SIGNATURE_SIZE,
+                response.content.public_key
+            );
+
+            Log::println(valid ? "Signature valid — paired." : "Signature invalid — ignoring.");
+
+            if (valid) return;
         }
     }
 };

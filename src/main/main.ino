@@ -3,6 +3,7 @@
 #ifdef ARDUINO_NRF52_ADAFRUIT
   #include <Adafruit_TinyUSB.h>
   #include "lifecycle/factory.hpp"
+  #include "logger.hpp"
 #endif
 
 // ---------------------------------------------------------------------------
@@ -20,9 +21,9 @@ void serial_monitor_delay() {
     int delay_seconds = 10;
 #endif
     for (int i = 0; i < delay_seconds; i++) {
-        Serial.print("Timeout : ");
-        Serial.print(delay_seconds - i);
-        Serial.println("s");
+        Log::print("Timeout : ");
+        Log::print(delay_seconds - i);
+        Log::println("s");
         delay(1000);
     }
 }
@@ -33,8 +34,10 @@ void serial_monitor_delay() {
 #ifdef ARDUINO_NRF52_ADAFRUIT
 
 void setup() {
-    Serial.begin(115200);
-    serial_monitor_delay();
+    if (NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk) {
+        Serial.begin(115200);
+        serial_monitor_delay();
+    }
 
     OperationMode mode = EMITTER ? OperationMode::TRANSMITTER : OperationMode::RECEIVER;
     getLifeCycle(mode)->startLifeCycle();

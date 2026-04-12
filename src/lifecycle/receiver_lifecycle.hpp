@@ -5,44 +5,48 @@
 class ReceiverLifeCycle : public LifeCycle {
 public:
     void startLifeCycle() override {
-        radioInit(RADIO_CHANNEL_RECV);
-        startScanning();
+        radioInit(DISCOVERY_CHANNEL);
+
+        // Build response packet once — same keys for every response.
+        HandshakePacket response;
+        response.content.device_id[0] = 0xCA; response.content.device_id[1] = 0xFE;
+        response.content.device_id[2] = 0xBA; response.content.device_id[3] = 0xBE;
+        _crypto->getPublicKey(response.content.public_key);
+
+        uint32_t sig_size = HandshakePacket::SIGNATURE_SIZE;
+        _crypto->sign(
+            reinterpret_cast<const uint8_t*>(&response.content),
+            HandshakePacket::CONTENT_SIZE,
+            response.signature, sig_size
+        );
+
+        Log::println("=== Receiver ===");
+        response.print();
+
+        static uint8_t tx_buf[HandshakePacket::SIZE];
+        response.toBytes(tx_buf);
+
+        startListening(tx_buf);
     }
 
 private:
-    void startScanning() {
+    void startListening(uint8_t* tx_buf) {
         static uint8_t rx_buf[HandshakePacket::SIZE] = {};
 
-        Serial.println("Scanning...");
-
         while (true) {
-            bool received = rxPacket(rx_buf, 0xFFFFFFFF);
-            if (!received) continue;
+            if (!rxPacket(rx_buf, 0xFFFFFFFF)) continue;
 
-            HandshakePacket packet = HandshakePacket::fromBytes(rx_buf);
+            uint8_t rssi = NRF_RADIO->RSSISAMPLE;
+            if (rssi >= (uint8_t)(-RSSI_HANDSHAKE_THRESHOLD_DBM)) continue; // signal too weak
 
-            // Verification happens here — trust boundary before responding.
-            // Uses the sender's public key embedded in content to verify
-            // the signature over the content bytes. CC310 handles SHA-256 + ECDSA internally.
-            bool valid = _crypto->verify(
-                reinterpret_cast<const uint8_t*>(&packet.content),
-                HandshakePacket::CONTENT_SIZE,
-                packet.signature,
-                HandshakePacket::SIGNATURE_SIZE,
-                packet.content.public_key
-            );
+            HandshakePacket beacon = HandshakePacket::fromBytes(rx_buf);
 
-            if (!valid) {
-                Serial.println("Beacon received — invalid signature, ignoring.");
-                continue;
-            }
-
-            Serial.println("Beacon received — signature valid.");
-            packet.print();
+            Log::println("=== Received beacon ===");
+            beacon.print();
 
             delay(1); // turnaround guard
-            txPacket(rx_buf);
-            Serial.println("Response sent.");
+            txPacket(tx_buf);
+            Log::println("Response sent.");
         }
     }
 };

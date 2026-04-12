@@ -5,14 +5,14 @@
 #include "handshake_packet.hpp"
 #include "cryptography/signing_scheme.hpp"
 #include "cryptography/nrf_signing_scheme.hpp"
+#include "config.hpp"
 
-#define RADIO_CHANNEL_EMIT  255
-#define RADIO_CHANNEL_RECV  255
-#define PACKET_LEN          HandshakePacket::SIZE
+#define PACKET_LEN HandshakePacket::SIZE
 
 class LifeCycle {
 public:
     LifeCycle() {
+
         // Instantiated as NrfSigningScheme but typed as abstract SigningScheme*
         // — swap the concrete type here to change the crypto backend.
         _crypto = new NrfSigningScheme();
@@ -50,6 +50,9 @@ protected:
                              (RADIO_CRCCNF_SKIPADDR_Skip << RADIO_CRCCNF_SKIPADDR_Pos);
         NRF_RADIO->CRCPOLY = 0x11021;
         NRF_RADIO->CRCINIT = 0xFFFF;
+
+        // Start RSSI measurement automatically on address match.
+        NRF_RADIO->SHORTS = RADIO_SHORTS_ADDRESS_RSSISTART_Msk;
     }
 
     static void txPacket(uint8_t* buf) {
