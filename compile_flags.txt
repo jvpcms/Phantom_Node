@@ -1,2 +1,14 @@
+-DARDUINO_NRF52_ADAFRUIT
+-DNRF52840_XXAA
+-DARDUINO=10819
 -Isrc
+-I/home/jvpcms/.arduino15/packages/adafruit/hardware/nrf52/1.7.0/cores/nRF5/nordic/nrfx/mdk
+-I/home/jvpcms/.arduino15/packages/adafruit/tools/CMSIS/5.7.0/CMSIS/Core/Include
+-I/home/jvpcms/.arduino15/packages/adafruit/hardware/nrf52/1.7.0/cores/nRF5
+-I/home/jvpcms/.arduino15/packages/adafruit/hardware/nrf52/1.7.0/cores/nRF5/nordic/nrfx
+-I/home/jvpcms/.arduino15/packages/adafruit/hardware/nrf52/1.7.0/cores/nRF5/nordic/nrfx/hal
+-I/home/jvpcms/.arduino15/packages/adafruit/hardware/nrf52/1.7.0/cores/nRF5/nordic/nrfx/drivers
+-I/home/jvpcms/.arduino15/packages/adafruit/hardware/nrf52/1.7.0/libraries/Adafruit_TinyUSB_Arduino/src
+-I/home/jvpcms/.arduino15/packages/adafruit/hardware/nrf52/1.7.0/libraries/Adafruit_nRFCrypto/src
+-I/home/jvpcms/.arduino15/packages/adafruit/tools/arm-none-eabi-gcc/9-2019q4/arm-none-eabi/include
 -std=c++17

@@ -4,6 +4,7 @@
 
 ```
 src/
+├── config.hpp
 ├── cryptography
 │   ├── abstract_cryptography
 │   │   ├── cryptography_scheme.cpp
@@ -13,11 +14,19 @@ src/
 │   ├── discrete_log_cryptography.hpp
 │   ├── docs.md
 │   ├── elliptic_curve_cryptography.hpp
-│   ├── main.cpp
 │   ├── mpi_elliptic_curve_cryptography.hpp
-│   └── nrf_elliptic_curve_cryptography.hpp
+│   ├── nrf_elliptic_curve_cryptography.hpp
+│   ├── nrf_signing_scheme.hpp
+│   └── signing_scheme.hpp
 ├── desktop
 │   └── main.cpp
+├── lifecycle
+│   ├── factory.hpp
+│   ├── handshake_packet.hpp
+│   ├── lifecycle.hpp
+│   ├── receiver_lifecycle.hpp
+│   └── transmitter_lifecycle.hpp
+├── logger.hpp
 ├── main
 │   ├── docs.md
 │   └── main.ino
@@ -345,9 +354,56 @@ Exposes the internal public key object so the peer can call computeSharedSecret(
 Encrypts a message by XOR-ing it with the shared secret.
 XOR is its own inverse, so decrypt() is the same operation.
 
+### `cryptography/nrf_signing_scheme.hpp`
+
+#### `class NrfSigningScheme : public SigningScheme`
+
+ECDSA P-256 signing using the nRF52840 CryptoCell-310.
+sign()   — calls CRYS_ECDSA_Sign with SHA-256 hashing, produces 64-byte (r||s) signature.
+verify() — rebuilds the public key from raw bytes via CRYS_ECPKI_BuildPublKey, then
+calls CRYS_ECDSA_Verify.
+Note: CRYS_ECPKI_BuildPublKey (mode 1 partial check) may fail on this CC310 build
+— the same limitation documented in nrf_elliptic_curve_cryptography.hpp for ECDH.
+Verification is architecturally correct; the import path may need a workaround once
+cross-device key exchange is tested.
+
+### `cryptography/signing_scheme.hpp`
+
+#### `class SigningScheme`
+
+Abstract interface for a signing scheme.
+Typed as a pointer in LifeCycle to allow swapping implementations.
+
+#### `virtual bool sign(const uint8_t* data, uint32_t len, uint8_t* sig_out, uint32_t& sig_size) = 0`
+
+Signs `data` with the local private key. Writes signature into `sig_out`.
+
+#### `virtual bool verify(const uint8_t* data, uint32_t len, const uint8_t* sig, uint32_t sig_size, const uint8_t* pub_key_bytes) = 0`
+
+Verifies `sig` over `data` using the provided raw public key bytes
+(65-byte uncompressed P-256: 04 || X || Y).
+
+#### `virtual void getPublicKey(uint8_t* out) = 0`
+
+Exports the local public key as a 65-byte uncompressed point.
+
 ---
 
 ## desktop
+
+---
+
+## lifecycle
+
+### `lifecycle/factory.hpp`
+
+### `lifecycle/handshake_packet.hpp`
+
+### `lifecycle/lifecycle.hpp`
+
+### `lifecycle/receiver_lifecycle.hpp`
+
+### `lifecycle/transmitter_lifecycle.hpp`
 
 ---
 
