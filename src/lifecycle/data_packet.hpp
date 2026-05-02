@@ -9,9 +9,10 @@ struct DataPacket {
     static constexpr uint8_t SIZE = 16;
 };
 
-struct AckPacket {
-    static constexpr uint8_t MAGIC = 0xAC;
-    uint8_t value;
+struct ResponsePacket {
+    static constexpr uint8_t ACK  = 0xAC;
+    static constexpr uint8_t NACK = 0x4E;
+    uint8_t type;
     uint8_t _pad[3];
     static constexpr uint8_t SIZE = 4;
 };

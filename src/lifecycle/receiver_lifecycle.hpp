@@ -24,15 +24,27 @@ public:
 
 private:
     void startReceiving() {
-        static uint8_t enc_buf[DataPacket::SIZE]  = {};
-        static uint8_t data_buf[DataPacket::SIZE] = {};
-        static uint8_t ack_buf[AckPacket::SIZE]   = {AckPacket::MAGIC};
+        static uint8_t enc_buf[DataPacket::SIZE]       = {};
+        static uint8_t data_buf[DataPacket::SIZE]      = {};
+        static uint8_t ack_buf[ResponsePacket::SIZE]   = {ResponsePacket::ACK,  0, 0, 0};
+        static uint8_t nack_buf[ResponsePacket::SIZE]  = {ResponsePacket::NACK, 0, 0, 0};
+
+        uint8_t ch        = this->_fhop.next();
+        bool    have_data = false;
 
         while (true) {
-            uint8_t ch = this->_fhop.next();
+            if (!have_data) {
+                this->radioInit(ch, DataPacket::SIZE);
+                have_data = this->rxPacket(enc_buf, RX_TIMEOUT_MS);
+                if (!have_data) {
+                    this->radioInit(ch, ResponsePacket::SIZE);
+                    this->txPacket(nack_buf);
+                    Log::print("nack          ch="); Log::println(ch);
+                    continue;
+                }
+            }
+            have_data = false;
 
-            this->radioInit(ch, DataPacket::SIZE);
-            this->rxPacket(enc_buf, 0xFFFFFFFF);
             this->_crypto->decrypt(enc_buf, data_buf, DataPacket::SIZE);
 
             constexpr uint8_t PAYLOAD_SIZE = DataPacket::SIZE - 1;
@@ -43,12 +55,8 @@ private:
             this->_message_len += chunk;
 
             Log::print("data received ch="); Log::println(ch);
-            Log::print("  text: ");
-            for (uint8_t j = 0; j < chunk; j++) Log::print((char)data_buf[1 + j]);
-            Log::println();
-            delay(1000);
 
-            this->radioInit(ch, AckPacket::SIZE);
+            this->radioInit(ch, ResponsePacket::SIZE);
             this->txPacket(ack_buf);
             Log::print("ack sent      ch="); Log::println(ch);
 
@@ -59,6 +67,20 @@ private:
                 Log::println("Transmission complete.");
                 break;
             }
+
+            // Time-division: listen on ch_next; re-send ACK on ch if TX missed it.
+            uint8_t ch_next = this->_fhop.next();
+            while (true) {
+                this->radioInit(ch_next, DataPacket::SIZE);
+                if (this->rxPacket(enc_buf, RX_WINDOW_MS)) {
+                    have_data = true;
+                    break;
+                }
+                this->radioInit(ch, ResponsePacket::SIZE);
+                this->txPacket(ack_buf);
+                Log::print("re-ack        ch="); Log::println(ch);
+            }
+            ch = ch_next;
         }
     }
 

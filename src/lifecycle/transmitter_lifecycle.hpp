@@ -33,31 +33,38 @@ private:
         constexpr uint8_t  PAYLOAD_SIZE = DataPacket::SIZE - 1;
         constexpr uint16_t TOTAL        = (MSG_LEN + PAYLOAD_SIZE - 1) / PAYLOAD_SIZE;
 
-        uint8_t plain[DataPacket::SIZE]   = {};
-        uint8_t enc_buf[DataPacket::SIZE] = {};
-        uint8_t ack_buf[AckPacket::SIZE]  = {};
+        uint8_t plain[DataPacket::SIZE]        = {};
+        uint8_t enc_buf[DataPacket::SIZE]      = {};
+        uint8_t resp_buf[ResponsePacket::SIZE] = {};
 
-        for (uint16_t i = 0; i < TOTAL; i++) {
-            uint16_t offset    = i * PAYLOAD_SIZE;
-            uint8_t  chunk     = (MSG_LEN - offset) < PAYLOAD_SIZE ? (MSG_LEN - offset) : PAYLOAD_SIZE;
+        uint8_t ch = this->_fhop.next();
+
+        for (uint16_t i = 0; i < TOTAL; ) {
+            uint16_t offset = i * PAYLOAD_SIZE;
+            uint8_t  chunk  = (MSG_LEN - offset) < PAYLOAD_SIZE
+                              ? (MSG_LEN - offset) : PAYLOAD_SIZE;
 
             plain[0] = (i == TOTAL - 1) ? DataPacket::IS_LAST : 0;
             memset(&plain[1], 0, PAYLOAD_SIZE);
             memcpy(&plain[1], MESSAGE + offset, chunk);
-
             this->_crypto->encrypt(plain, enc_buf, DataPacket::SIZE);
 
-            uint8_t ch = this->_fhop.next();
             this->radioInit(ch, DataPacket::SIZE);
             this->txPacket(enc_buf);
             Log::print("data sent     ch="); Log::println(ch);
-            Log::print("  plain: "); this->logHex(plain, DataPacket::SIZE);
-            Log::print("  enc:   "); this->logHex(enc_buf, DataPacket::SIZE);
 
-            this->radioInit(ch, AckPacket::SIZE);
-            this->rxPacket(ack_buf, 0xFFFFFFFF);
-            Log::print("ack received  ch="); Log::println(ch);
-            delay(1000);
+            this->radioInit(ch, ResponsePacket::SIZE);
+            this->rxPacket(resp_buf, 0xFFFFFFFF);
+
+            if (resp_buf[0] == ResponsePacket::NACK) {
+                Log::print("nack          ch="); Log::println(ch);
+                continue;
+            }
+
+            Log::print("ack           ch="); Log::println(ch);
+            delay(TURNAROUND_GUARD_MS);
+            ch = this->_fhop.next();
+            i++;
         }
         Log::println("Transmission complete.");
     }
