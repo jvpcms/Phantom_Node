@@ -1,6 +1,10 @@
 #pragma once
 
 #include <Adafruit_nRFCrypto.h>
+#include "nrf_cc310/include/crys_ecpki_build.h"
+#include "nrf_cc310/include/crys_ecpki_domain.h"
+#include "nrf_cc310/include/crys_ecpki_dh.h"
+#include "logger.hpp"
 
 /**
  * ECDH key exchange and XOR encryption using the nRF52840 CryptoCell-310.
@@ -30,6 +34,15 @@
 struct NrfBuffer {
     static constexpr uint8_t SIZE = 32;
     uint8_t data[SIZE] = {0};
+
+    void print() const {
+        for (uint8_t i = 0; i < SIZE; i++) {
+            if (this->data[i] < 0x10) Log::print("0");
+            Log::print(this->data[i], HEX);
+            Log::print(" ");
+        }
+        Log::println();
+    }
 };
 
 // Uncompressed public key: 04 || X (32 bytes) || Y (32 bytes).
@@ -49,38 +62,58 @@ struct NrfPublicKey {
 class NrfECDHScheme {
 public:
     bool begin() {
-        nRFCrypto.begin(); // initialises the CryptoCell-310 hardware — must be called first
-        if (!_ecc.begin())                                       return false;
-        if (!_private_key.begin(CRYS_ECPKI_DomainID_secp256r1)) return false;
-        if (!_public_key.begin(CRYS_ECPKI_DomainID_secp256r1))  return false;
-        return nRFCrypto_ECC::genKeyPair(_private_key, _public_key);
+        nRFCrypto.begin();
+        if (!this->_ecc.begin())                                       return false;
+        if (!this->_private_key.begin(CRYS_ECPKI_DomainID_secp256r1)) return false;
+        if (!this->_public_key.begin(CRYS_ECPKI_DomainID_secp256r1))  return false;
+        return nRFCrypto_ECC::genKeyPair(this->_private_key, this->_public_key);
     }
 
     void end() {
-        _private_key.end();
-        _public_key.end();
-        _ecc.end();
+        this->_private_key.end();
+        this->_public_key.end();
+        this->_ecc.end();
     }
 
-    /** Returns this party's public key serialised as a 65-byte uncompressed point. */
     NrfPublicKey getPublicKey() {
         NrfPublicKey pk;
-        _public_key.toRaw(pk.data, NrfPublicKey::SIZE);
+        this->_public_key.toRaw(pk.data, NrfPublicKey::SIZE);
         return pk;
     }
 
-    /**
-     * Computes the shared secret from the peer's key object.
-     * Returns the x-coordinate of private_key * peer_public as 32 bytes.
-     */
     NrfBuffer computeSharedSecret(nRFCrypto_ECC_PublicKey& peer_pub) {
         NrfBuffer secret;
-        nRFCrypto_ECC::SVDP_DH(_private_key, peer_pub, secret.data, NrfBuffer::SIZE);
+        nRFCrypto_ECC::SVDP_DH(this->_private_key, peer_pub, secret.data, NrfBuffer::SIZE);
         return secret;
     }
 
-    /** Exposes the internal public key object so the peer can call computeSharedSecret(). */
-    nRFCrypto_ECC_PublicKey& publicKeyObj() { return _public_key; }
+    NrfBuffer computeSharedSecret(const uint8_t* peer_pub_raw) {
+        NrfBuffer secret;
+
+        const CRYS_ECPKI_Domain_t* domain = CRYS_ECPKI_GetEcDomain(CRYS_ECPKI_DomainID_secp256r1);
+        CRYS_ECPKI_UserPublKey_t pub_key;
+        if (CRYS_ECPKI_BuildPublKey(domain, const_cast<uint8_t*>(peer_pub_raw), NrfPublicKey::SIZE, &pub_key) != CRYS_OK)
+            return secret;
+
+        uint8_t priv_raw[32];
+        this->_private_key.toRaw(priv_raw, sizeof(priv_raw));
+        CRYS_ECPKI_UserPrivKey_t priv_key;
+        CRYSError_t err = CRYS_ECPKI_BuildPrivKey(
+            this->_private_key.getDomain(), priv_raw, sizeof(priv_raw), &priv_key
+        );
+        memset(priv_raw, 0, sizeof(priv_raw));
+        if (err != CRYS_OK) return secret;
+
+        CRYS_ECDH_TempData_t* temp = (CRYS_ECDH_TempData_t*) rtos_malloc(sizeof(CRYS_ECDH_TempData_t));
+        if (!temp) return secret;
+        uint32_t secret_size = NrfBuffer::SIZE;
+        CRYS_ECDH_SVDP_DH(&pub_key, &priv_key, secret.data, &secret_size, temp);
+        rtos_free(temp);
+
+        return secret;
+    }
+
+    nRFCrypto_ECC_PublicKey& publicKeyObj() { return this->_public_key; }
 
     /**
      * Encrypts a message by XOR-ing it with the shared secret.
@@ -94,7 +127,7 @@ public:
     }
 
     NrfBuffer decrypt(const NrfBuffer& ciphertext, const NrfBuffer& shared_secret) {
-        return encrypt(ciphertext, shared_secret);
+        return this->encrypt(ciphertext, shared_secret);
     }
 
 private:

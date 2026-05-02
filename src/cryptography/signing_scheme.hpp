@@ -25,5 +25,8 @@ public:
     /** Exports the local public key as a 65-byte uncompressed point. */
     virtual void getPublicKey(uint8_t* out) = 0;
 
+    /** ECDH using the same key pair: computes the shared secret from the peer's raw 65-byte public key. */
+    virtual bool computeSharedSecret(const uint8_t* peer_pub_raw, uint8_t* out, uint8_t out_len) = 0;
+
     virtual ~SigningScheme() = default;
 };

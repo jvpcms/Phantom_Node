@@ -5,23 +5,23 @@
 class TransmitterLifeCycle : public LifeCycle {
 public:
     void startLifeCycle() override {
-        radioInit(DISCOVERY_CHANNEL);
-        startDiscoverable();
+        this->radioInit(DISCOVERY_CHANNEL);
+        HandshakePacket peer = this->startDiscoverable();
+        uint8_t shared[32] = {};
+        this->_crypto->computeSharedSecret(peer.content.public_key, shared, sizeof(shared));
+        Log::print("Shared secret: ");
+        for (uint8_t i = 0; i < sizeof(shared); i++) {
+            if (shared[i] < 0x10) Log::print("0");
+            Log::print(shared[i], HEX);
+            Log::print(" ");
+        }
+        Log::println();
     }
 
 private:
-    void startDiscoverable() {
-        HandshakePacket beacon;
-        beacon.content.device_id[0] = 0xDE; beacon.content.device_id[1] = 0xAD;
-        beacon.content.device_id[2] = 0xBE; beacon.content.device_id[3] = 0xEF;
-        _crypto->getPublicKey(beacon.content.public_key);
-
-        uint32_t sig_size = HandshakePacket::SIGNATURE_SIZE;
-        _crypto->sign(
-            reinterpret_cast<const uint8_t*>(&beacon.content),
-            HandshakePacket::CONTENT_SIZE,
-            beacon.signature, sig_size
-        );
+    HandshakePacket startDiscoverable() {
+        const uint8_t id[] = {0xDE, 0xAD, 0xBE, 0xEF};
+        HandshakePacket beacon = HandshakePacket::build(id, this->_crypto);
 
         static uint8_t tx_buf[HandshakePacket::SIZE];
         static uint8_t rx_buf[HandshakePacket::SIZE];
@@ -31,16 +31,16 @@ private:
         beacon.print();
 
         while (true) {
-            txPacket(tx_buf);
+            this->txPacket(tx_buf);
 
-            if (!rxPacket(rx_buf, BEACON_INTERVAL_MS)) continue;
+            if (!this->rxPacket(rx_buf, BEACON_INTERVAL_MS)) continue;
 
             HandshakePacket response = HandshakePacket::fromBytes(rx_buf);
 
             Log::println("=== Received handshake ===");
             response.print();
 
-            bool valid = _crypto->verify(
+            bool valid = this->_crypto->verify(
                 reinterpret_cast<const uint8_t*>(&response.content),
                 HandshakePacket::CONTENT_SIZE,
                 response.signature,
@@ -50,7 +50,7 @@ private:
 
             Log::println(valid ? "Signature valid — paired." : "Signature invalid — ignoring.");
 
-            if (valid) return;
+            if (valid) return response;
         }
     }
 };

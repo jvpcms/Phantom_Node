@@ -12,17 +12,14 @@
 class LifeCycle {
 public:
     LifeCycle() {
-
-        // Instantiated as NrfSigningScheme but typed as abstract SigningScheme*
-        // — swap the concrete type here to change the crypto backend.
-        _crypto = new NrfSigningScheme();
-        _crypto->begin();
+        this->_crypto = new NrfSigningScheme();
+        this->_crypto->begin();
     }
 
     virtual void startLifeCycle() = 0;
 
     virtual ~LifeCycle() {
-        delete _crypto;
+        delete this->_crypto;
     }
 
 protected:
