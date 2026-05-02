@@ -42,6 +42,14 @@ void setup() {
         serial_monitor_delay();
     }
 
+    // NRF_RADIO requires HFXO (crystal). USB init starts it implicitly on USB-connected
+    // boots; on battery we must start it explicitly or the radio busy-waits forever.
+    if (!(NRF_CLOCK->HFCLKSTAT & CLOCK_HFCLKSTAT_SRC_Msk)) {
+        NRF_CLOCK->EVENTS_HFCLKSTARTED = 0;
+        NRF_CLOCK->TASKS_HFCLKSTART    = 1;
+        while (NRF_CLOCK->EVENTS_HFCLKSTARTED == 0);
+    }
+
     OperationMode mode = EMITTER ? OperationMode::TRANSMITTER : OperationMode::RECEIVER;
     getLifeCycle(mode)->startLifeCycle();
 }
