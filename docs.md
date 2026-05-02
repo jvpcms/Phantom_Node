@@ -21,7 +21,9 @@ src/
 ├── desktop
 │   └── main.cpp
 ├── lifecycle
+│   ├── data_packet.hpp
 │   ├── factory.hpp
+│   ├── frequency_hopper.hpp
 │   ├── handshake_packet.hpp
 │   ├── lifecycle.hpp
 │   ├── receiver_lifecycle.hpp
@@ -336,19 +338,6 @@ getPublicKey() (serialised for logging), then calls computeSharedSecret()
 with the peer's key object. The resulting 32-byte shared secret is used
 directly as a XOR key.
 
-#### `NrfPublicKey getPublicKey()`
-
-Returns this party's public key serialised as a 65-byte uncompressed point.
-
-#### `NrfBuffer computeSharedSecret(nRFCrypto_ECC_PublicKey& peer_pub)`
-
-Computes the shared secret from the peer's key object.
-Returns the x-coordinate of private_key * peer_public as 32 bytes.
-
-#### `nRFCrypto_ECC_PublicKey& publicKeyObj()`
-
-Exposes the internal public key object so the peer can call computeSharedSecret().
-
 #### `NrfBuffer encrypt(const NrfBuffer& message, const NrfBuffer& shared_secret)`
 
 Encrypts a message by XOR-ing it with the shared secret.
@@ -366,6 +355,38 @@ Note: CRYS_ECPKI_BuildPublKey (mode 1 partial check) may fail on this CC310 buil
 — the same limitation documented in nrf_elliptic_curve_cryptography.hpp for ECDH.
 Verification is architecturally correct; the import path may need a workaround once
 cross-device key exchange is tested.
+
+#### `bool begin() override`
+
+Initialises nRFCrypto and generates a fresh P-256 key pair.
+
+#### `bool sign(const uint8_t* data, uint32_t len, uint8_t* sig_out, uint32_t& sig_size) override`
+
+Signs data with the local private key via CRYS_ECDSA_Sign (SHA-256); produces a 64-byte r||s signature.
+
+#### `bool verify(const uint8_t* data, uint32_t len, const uint8_t* sig, uint32_t sig_size, const uint8_t* pub_key_bytes) override`
+
+Verifies a 64-byte r||s signature over data using the peer's raw 65-byte uncompressed public key.
+
+#### `void getPublicKey(uint8_t* out) override`
+
+Exports the local public key as a 65-byte uncompressed P-256 point (04 || X || Y).
+
+#### `bool computeSharedSecret(const uint8_t* peer_pub_raw, uint8_t* out, uint8_t out_len) override`
+
+ECDH using the signing key pair: derives the shared secret from the peer's raw 65-byte public key.
+
+#### `void setSharedKey(const uint8_t* key_bytes) override`
+
+Copies the first 16 bytes of the ECDH shared secret into the AES-128 key slot.
+
+#### `bool encrypt(const uint8_t* in, uint8_t* out, uint8_t len) override`
+
+Encrypts len bytes using AES-128-CTR.
+
+#### `bool decrypt(const uint8_t* in, uint8_t* out, uint8_t len) override`
+
+Decrypts len bytes using AES-128-CTR (symmetric with encrypt).
 
 ### `cryptography/signing_scheme.hpp`
 
@@ -387,6 +408,22 @@ Verifies `sig` over `data` using the provided raw public key bytes
 
 Exports the local public key as a 65-byte uncompressed point.
 
+#### `virtual bool computeSharedSecret(const uint8_t* peer_pub_raw, uint8_t* out, uint8_t out_len) = 0`
+
+ECDH using the same key pair: computes the shared secret from the peer's raw 65-byte public key.
+
+#### `virtual void setSharedKey(const uint8_t* key_bytes) = 0`
+
+Store the first 16 bytes of the ECDH shared secret for AES-128 symmetric operations.
+
+#### `virtual bool encrypt(const uint8_t* in, uint8_t* out, uint8_t len) = 0`
+
+AES-128-ECB encrypt — len must be a multiple of 16.
+
+#### `virtual bool decrypt(const uint8_t* in, uint8_t* out, uint8_t len) = 0`
+
+AES-128-ECB decrypt — len must be a multiple of 16.
+
 ---
 
 ## desktop
@@ -395,15 +432,151 @@ Exports the local public key as a 65-byte uncompressed point.
 
 ## lifecycle
 
+### `lifecycle/data_packet.hpp`
+
+#### `struct DataPacket`
+
+16-byte encrypted data frame. Byte 0 is flags (IS_LAST), bytes 1–15 are payload.
+
+#### `struct ResponsePacket`
+
+4-byte ACK/NACK response frame. The type byte is either ACK (0xAC) or NACK (0x4E).
+
 ### `lifecycle/factory.hpp`
+
+#### `enum class OperationMode`
+
+Selects whether the device acts as a transmitter (beacon emitter) or receiver.
+
+#### `LifeCycle* getLifeCycle(OperationMode mode)`
+
+Allocates and returns the LifeCycle instance for the given mode. Caller owns the pointer.
+
+### `lifecycle/frequency_hopper.hpp`
+
+#### `class FHop`
+
+xorshift32 PRNG-based frequency hopper producing channels in [FHOP_CHANNEL_MIN, FHOP_CHANNEL_MAX].
+
+#### `FHop() : _state(1)`
+
+Seeds with 1 (xorshift32 requires a non-zero state).
+
+#### `explicit FHop(uint32_t seed) : _state(seed == 0 ? 1 : seed)`
+
+Seeds with the given value; substitutes 1 if seed is zero.
+
+#### `static FHop fromSecret(const uint8_t* shared_secret)`
+
+Derives the seed from the first 4 bytes of a 32-byte ECDH shared secret.
+
+#### `uint8_t next()`
+
+Advances the xorshift32 state and returns the next channel in [FHOP_CHANNEL_MIN, FHOP_CHANNEL_MAX].
 
 ### `lifecycle/handshake_packet.hpp`
 
+#### `struct HandshakePacket`
+
+Wire representation of a discovery handshake: device_id + public_key + ECDSA signature.
+
+#### `struct Content`
+
+Plain fields that are signed: device_id (4 bytes) and public_key (65-byte uncompressed P-256 point).
+
+#### `void toBytes(uint8_t* buf) const`
+
+Serializes the packet into a flat byte buffer of at least SIZE bytes.
+
+#### `static HandshakePacket build(const uint8_t device_id[DEVICE_ID_SIZE], SigningScheme* crypto)`
+
+Constructs and signs a new packet using the given device_id and crypto context.
+
+#### `static HandshakePacket fromBytes(const uint8_t* buf)`
+
+Deserializes a packet from a flat byte buffer of at least SIZE bytes.
+
+#### `void print() const`
+
+Logs device_id, public_key, and signature as hex to the serial output.
+
 ### `lifecycle/lifecycle.hpp`
+
+#### `class LifeCycle`
+
+Base class for transmitter and receiver lifecycles.
+Owns the crypto context, frequency hopper, and all NRF_RADIO helpers.
+
+#### `LifeCycle()`
+
+Initializes and starts the NrfSigningScheme (key generation).
+
+#### `virtual void startLifeCycle() = 0`
+
+Entry point — runs the full discovery + data transfer sequence.
+
+#### `virtual ~LifeCycle()`
+
+Frees the crypto context.
+
+#### `static void logHex(const uint8_t* buf, uint8_t len)`
+
+Prints a byte array as space-separated hex to the serial log.
+
+#### `static void radioInit(uint8_t channel, uint8_t packet_len = HandshakePacket::SIZE)`
+
+Powers and configures NRF_RADIO for the given channel and static packet length.
+
+#### `static void txPacket(uint8_t* buf)`
+
+Transmits one packet from buf; blocks until the radio disables.
+
+#### `static bool rxPacket(uint8_t* buf, uint32_t timeout_ms)`
+
+Receives one packet into buf; returns true on CRC-OK within timeout_ms. Pass 0xFFFFFFFF to wait indefinitely.
+
+#### `static bool rssiOk()`
+
+Returns true if the last received packet's RSSI exceeds the handshake threshold.
 
 ### `lifecycle/receiver_lifecycle.hpp`
 
+#### `class ReceiverLifeCycle : public LifeCycle`
+
+Receiver role — listens for a beacon, completes the handshake, then receives encrypted data.
+
+#### `void startLifeCycle() override`
+
+Runs discovery then derives the shared key and starts receiving.
+
+#### `void startReceiving()`
+
+Frequency-hopping receive loop.
+Times out with a NACK if no data arrives within RX_TIMEOUT_MS.
+After an ACK is sent, uses a time-division loop to re-send the ACK on ch N while
+listening on ch N+1, recovering from a lost ACK without clock synchronisation.
+
+#### `HandshakePacket startDiscovering()`
+
+Waits for a beacon with sufficient RSSI, responds with own handshake packet, returns the peer's packet.
+
 ### `lifecycle/transmitter_lifecycle.hpp`
+
+#### `class TransmitterLifeCycle : public LifeCycle`
+
+Transmitter role — broadcasts beacons until paired, then sends encrypted data over frequency-hopping channels.
+
+#### `void startLifeCycle() override`
+
+Runs discovery then derives the shared key and starts transmitting.
+
+#### `void startTransmitting()`
+
+Frequency-hopping transmit loop; retransmits the current packet on NACK and advances on ACK.
+
+#### `HandshakePacket startDiscoverable()`
+
+Broadcasts beacon until a valid signed handshake response is received; returns the peer's packet.
 
 ---
 
