@@ -2,45 +2,84 @@
 
 #include "lifecycle.hpp"
 
+/** Transmitter role — broadcasts beacons until paired, then sends encrypted data over frequency-hopping channels. */
 class TransmitterLifeCycle : public LifeCycle {
 public:
+    /** Runs discovery then derives the shared key and starts transmitting. */
     void startLifeCycle() override {
-        radioInit(DISCOVERY_CHANNEL);
-        startDiscoverable();
+        this->radioInit(DISCOVERY_CHANNEL);
+        HandshakePacket peer = this->startDiscoverable();
+        uint8_t shared[32] = {};
+        this->_crypto->computeSharedSecret(peer.content.public_key, shared, sizeof(shared));
+        this->_crypto->setSharedKey(shared);
+        this->_fhop = FHop::fromSecret(shared);
+        this->startTransmitting();
     }
 
 private:
-    void startDiscoverable() {
-        HandshakePacket beacon;
-        beacon.content.device_id[0] = 0xDE; beacon.content.device_id[1] = 0xAD;
-        beacon.content.device_id[2] = 0xBE; beacon.content.device_id[3] = 0xEF;
-        _crypto->getPublicKey(beacon.content.public_key);
+    /** Frequency-hopping transmit loop; retransmits the current packet on NACK and advances on ACK. */
+    void startTransmitting() {
+        static const char MESSAGE[] =
+            "Lorem ipsum dolor sit amet, consectetur adipiscing elit, "
+            "sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. "
+            "Ut enim ad minim veniam, quis nostrud exercitation ullamco.";
 
-        uint32_t sig_size = HandshakePacket::SIGNATURE_SIZE;
-        _crypto->sign(
-            reinterpret_cast<const uint8_t*>(&beacon.content),
-            HandshakePacket::CONTENT_SIZE,
-            beacon.signature, sig_size
-        );
+        constexpr uint16_t MSG_LEN      = sizeof(MESSAGE) - 1;
+        constexpr uint8_t  PAYLOAD_SIZE = DataPacket::SIZE - 1;
+        constexpr uint16_t TOTAL        = (MSG_LEN + PAYLOAD_SIZE - 1) / PAYLOAD_SIZE;
+
+        uint8_t plain[DataPacket::SIZE]        = {};
+        uint8_t enc_buf[DataPacket::SIZE]      = {};
+        uint8_t resp_buf[ResponsePacket::SIZE] = {};
+
+        uint8_t ch = this->_fhop.next();
+
+        for (uint16_t i = 0; i < TOTAL; ) {
+            uint16_t offset = i * PAYLOAD_SIZE;
+            uint8_t  chunk  = (MSG_LEN - offset) < PAYLOAD_SIZE
+                              ? (MSG_LEN - offset) : PAYLOAD_SIZE;
+
+            plain[0] = (i == TOTAL - 1) ? DataPacket::IS_LAST : 0;
+            memset(&plain[1], 0, PAYLOAD_SIZE);
+            memcpy(&plain[1], MESSAGE + offset, chunk);
+            this->_crypto->encrypt(plain, enc_buf, DataPacket::SIZE);
+
+            this->radioInit(ch, DataPacket::SIZE);
+            this->txPacket(enc_buf);
+
+            this->radioInit(ch, ResponsePacket::SIZE);
+            this->rxPacket(resp_buf, 0xFFFFFFFF);
+
+            if (resp_buf[0] == ResponsePacket::NACK) {
+                continue;
+            }
+
+            delay(TURNAROUND_GUARD_MS);
+            ch = this->_fhop.next();
+            i++;
+        }
+        Log::println("Transmission complete.");
+    }
+
+    /** Broadcasts beacon until a valid signed handshake response is received; returns the peer's packet. */
+    HandshakePacket startDiscoverable() {
+        const uint8_t id[] = {0xDE, 0xAD, 0xBE, 0xEF};
+        HandshakePacket beacon = HandshakePacket::build(id, this->_crypto);
 
         static uint8_t tx_buf[HandshakePacket::SIZE];
         static uint8_t rx_buf[HandshakePacket::SIZE];
         beacon.toBytes(tx_buf);
 
         Log::println("=== Emitter ===");
-        beacon.print();
 
         while (true) {
-            txPacket(tx_buf);
+            this->txPacket(tx_buf);
 
-            if (!rxPacket(rx_buf, BEACON_INTERVAL_MS)) continue;
+            if (!this->rxPacket(rx_buf, BEACON_INTERVAL_MS)) continue;
 
             HandshakePacket response = HandshakePacket::fromBytes(rx_buf);
 
-            Log::println("=== Received handshake ===");
-            response.print();
-
-            bool valid = _crypto->verify(
+            bool valid = this->_crypto->verify(
                 reinterpret_cast<const uint8_t*>(&response.content),
                 HandshakePacket::CONTENT_SIZE,
                 response.signature,
@@ -48,9 +87,7 @@ private:
                 response.content.public_key
             );
 
-            Log::println(valid ? "Signature valid — paired." : "Signature invalid — ignoring.");
-
-            if (valid) return;
+            if (valid) return response;
         }
     }
 };

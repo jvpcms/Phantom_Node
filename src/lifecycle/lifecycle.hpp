@@ -6,30 +6,48 @@
 #include "cryptography/signing_scheme.hpp"
 #include "cryptography/nrf_signing_scheme.hpp"
 #include "config.hpp"
+#include "frequency_hopper.hpp"
+#include "data_packet.hpp"
 
-#define PACKET_LEN HandshakePacket::SIZE
-
+/**
+ * Base class for transmitter and receiver lifecycles.
+ * Owns the crypto context, frequency hopper, and all NRF_RADIO helpers.
+ */
 class LifeCycle {
 public:
+    /** Initializes and starts the NrfSigningScheme (key generation). */
     LifeCycle() {
-
-        // Instantiated as NrfSigningScheme but typed as abstract SigningScheme*
-        // — swap the concrete type here to change the crypto backend.
-        _crypto = new NrfSigningScheme();
-        _crypto->begin();
+        this->_crypto = new NrfSigningScheme();
+        this->_crypto->begin();
     }
 
+    /** Entry point — runs the full discovery + data transfer sequence. */
     virtual void startLifeCycle() = 0;
 
+    /** Frees the crypto context. */
     virtual ~LifeCycle() {
-        delete _crypto;
+        delete this->_crypto;
     }
 
 protected:
     SigningScheme* _crypto;
+    FHop           _fhop;
+    char           _message[256]  = {};
+    uint16_t       _message_len   = 0;
 
 protected:
-    static void radioInit(uint8_t channel) {
+    /** Prints a byte array as space-separated hex to the serial log. */
+    static void logHex(const uint8_t* buf, uint8_t len) {
+        for (uint8_t i = 0; i < len; i++) {
+            if (buf[i] < 0x10) Log::print("0");
+            Log::print(buf[i], HEX);
+            Log::print(" ");
+        }
+        Log::println();
+    }
+
+    /** Powers and configures NRF_RADIO for the given channel and static packet length. */
+    static void radioInit(uint8_t channel, uint8_t packet_len = HandshakePacket::SIZE) {
         NRF_RADIO->POWER = 0;
         NRF_RADIO->POWER = 1;
 
@@ -42,8 +60,8 @@ protected:
         NRF_RADIO->RXADDRESSES = 1;
 
         NRF_RADIO->PCNF0 = 0;
-        NRF_RADIO->PCNF1 = (PACKET_LEN << RADIO_PCNF1_MAXLEN_Pos)  |
-                           (PACKET_LEN << RADIO_PCNF1_STATLEN_Pos) |
+        NRF_RADIO->PCNF1 = (packet_len << RADIO_PCNF1_MAXLEN_Pos)  |
+                           (packet_len << RADIO_PCNF1_STATLEN_Pos) |
                            (4          << RADIO_PCNF1_BALEN_Pos);
 
         NRF_RADIO->CRCCNF  = (RADIO_CRCCNF_LEN_Two      << RADIO_CRCCNF_LEN_Pos) |
@@ -55,6 +73,7 @@ protected:
         NRF_RADIO->SHORTS = RADIO_SHORTS_ADDRESS_RSSISTART_Msk;
     }
 
+    /** Transmits one packet from buf; blocks until the radio disables. */
     static void txPacket(uint8_t* buf) {
         NRF_RADIO->PACKETPTR    = (uint32_t)buf;
         NRF_RADIO->EVENTS_READY = 0;
@@ -70,7 +89,7 @@ protected:
         while (NRF_RADIO->EVENTS_DISABLED == 0);
     }
 
-    // Returns true if a packet was received before timeout_ms elapsed.
+    /** Receives one packet into buf; returns true on CRC-OK within timeout_ms. Pass 0xFFFFFFFF to wait indefinitely. */
     static bool rxPacket(uint8_t* buf, uint32_t timeout_ms) {
         NRF_RADIO->PACKETPTR    = (uint32_t)buf;
         NRF_RADIO->EVENTS_READY = 0;
@@ -95,5 +114,10 @@ protected:
         while (NRF_RADIO->EVENTS_DISABLED == 0);
 
         return NRF_RADIO->CRCSTATUS == RADIO_CRCSTATUS_CRCSTATUS_CRCOk;
+    }
+
+    /** Returns true if the last received packet's RSSI exceeds the handshake threshold. */
+    static bool rssiOk() {
+        return NRF_RADIO->RSSISAMPLE < (uint8_t)(-RSSI_HANDSHAKE_THRESHOLD_DBM);
     }
 };

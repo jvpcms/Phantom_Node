@@ -14,11 +14,12 @@
   #define EMITTER 1
 #endif
 
+/** Blocks for N seconds printing a countdown, giving time to open the serial monitor before the lifecycle starts. */
 void serial_monitor_delay() {
 #ifdef ARDUINO_NRF52_ADAFRUIT
-    int delay_seconds = 5;
+    int delay_seconds = 3;
 #else
-    int delay_seconds = 10;
+    int delay_seconds = 3;
 #endif
     for (int i = 0; i < delay_seconds; i++) {
         Log::print("Timeout : ");
@@ -33,9 +34,11 @@ void serial_monitor_delay() {
 // ---------------------------------------------------------------------------
 #ifdef ARDUINO_NRF52_ADAFRUIT
 
+/** Waits for the serial monitor, runs the countdown, then starts the lifecycle. */
 void setup() {
     if (NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk) {
         Serial.begin(115200);
+        while (!Serial) delay(10);
         serial_monitor_delay();
     }
 
@@ -43,6 +46,7 @@ void setup() {
     getLifeCycle(mode)->startLifeCycle();
 }
 
+/** Empty — lifecycle runs to completion in setup(). */
 void loop() { }
 
 // ---------------------------------------------------------------------------
@@ -50,11 +54,13 @@ void loop() { }
 // ---------------------------------------------------------------------------
 #else
 
+/** Initialises serial, runs the countdown, then starts the lifecycle. */
 void setup() {
     Serial.begin(115200);
     serial_monitor_delay();
 }
 
+/** Empty — lifecycle runs to completion in setup(). */
 void loop() { }
 
 #endif
