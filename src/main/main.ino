@@ -16,9 +16,9 @@
 
 void serial_monitor_delay() {
 #ifdef ARDUINO_NRF52_ADAFRUIT
-    int delay_seconds = 5;
+    int delay_seconds = 3;
 #else
-    int delay_seconds = 10;
+    int delay_seconds = 3;
 #endif
     for (int i = 0; i < delay_seconds; i++) {
         Log::print("Timeout : ");

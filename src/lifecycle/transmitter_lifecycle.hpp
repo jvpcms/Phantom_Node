@@ -9,14 +9,6 @@ public:
         HandshakePacket peer = this->startDiscoverable();
         uint8_t shared[32] = {};
         this->_crypto->computeSharedSecret(peer.content.public_key, shared, sizeof(shared));
-        Log::print("Shared secret: ");
-        for (uint8_t i = 0; i < sizeof(shared); i++) {
-            if (shared[i] < 0x10) Log::print("0");
-            Log::print(shared[i], HEX);
-            Log::print(" ");
-        }
-        Log::println();
-
         this->_crypto->setSharedKey(shared);
         this->_fhop = FHop::fromSecret(shared);
         this->startTransmitting();
@@ -51,17 +43,14 @@ private:
 
             this->radioInit(ch, DataPacket::SIZE);
             this->txPacket(enc_buf);
-            Log::print("data sent     ch="); Log::println(ch);
 
             this->radioInit(ch, ResponsePacket::SIZE);
             this->rxPacket(resp_buf, 0xFFFFFFFF);
 
             if (resp_buf[0] == ResponsePacket::NACK) {
-                Log::print("nack          ch="); Log::println(ch);
                 continue;
             }
 
-            Log::print("ack           ch="); Log::println(ch);
             delay(TURNAROUND_GUARD_MS);
             ch = this->_fhop.next();
             i++;
@@ -78,7 +67,6 @@ private:
         beacon.toBytes(tx_buf);
 
         Log::println("=== Emitter ===");
-        beacon.print();
 
         while (true) {
             this->txPacket(tx_buf);
@@ -87,9 +75,6 @@ private:
 
             HandshakePacket response = HandshakePacket::fromBytes(rx_buf);
 
-            Log::println("=== Received handshake ===");
-            response.print();
-
             bool valid = this->_crypto->verify(
                 reinterpret_cast<const uint8_t*>(&response.content),
                 HandshakePacket::CONTENT_SIZE,
@@ -97,8 +82,6 @@ private:
                 HandshakePacket::SIGNATURE_SIZE,
                 response.content.public_key
             );
-
-            Log::println(valid ? "Signature valid — paired." : "Signature invalid — ignoring.");
 
             if (valid) return response;
         }

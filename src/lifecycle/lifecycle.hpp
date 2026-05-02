@@ -105,4 +105,9 @@ protected:
 
         return NRF_RADIO->CRCSTATUS == RADIO_CRCSTATUS_CRCSTATUS_CRCOk;
     }
+
+    // Returns true if the last received packet's RSSI is above the handshake threshold.
+    static bool rssiOk() {
+        return NRF_RADIO->RSSISAMPLE < (uint8_t)(-RSSI_HANDSHAKE_THRESHOLD_DBM);
+    }
 };

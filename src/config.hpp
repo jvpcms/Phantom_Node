@@ -14,7 +14,7 @@ static constexpr int8_t   RSSI_HANDSHAKE_THRESHOLD_DBM = -50;
 
 // How long TX waits after receiving ACK before sending on ch N+1.
 // Gives RX time to complete its radio turnaround (~47 us); 5 ms is ~100x margin.
-static constexpr uint32_t TURNAROUND_GUARD_MS = 5;
+static constexpr uint32_t TURNAROUND_GUARD_MS = 1;
 
 // How long RX waits for a data packet before sending a NACK.
 static constexpr uint32_t RX_TIMEOUT_MS = 500;

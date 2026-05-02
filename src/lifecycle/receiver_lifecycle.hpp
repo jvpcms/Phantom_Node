@@ -9,14 +9,6 @@ public:
         HandshakePacket peer = this->startDiscovering();
         uint8_t shared[32] = {};
         this->_crypto->computeSharedSecret(peer.content.public_key, shared, sizeof(shared));
-        Log::print("Shared secret: ");
-        for (uint8_t i = 0; i < sizeof(shared); i++) {
-            if (shared[i] < 0x10) Log::print("0");
-            Log::print(shared[i], HEX);
-            Log::print(" ");
-        }
-        Log::println();
-
         this->_crypto->setSharedKey(shared);
         this->_fhop = FHop::fromSecret(shared);
         this->startReceiving();
@@ -39,7 +31,6 @@ private:
                 if (!have_data) {
                     this->radioInit(ch, ResponsePacket::SIZE);
                     this->txPacket(nack_buf);
-                    Log::print("nack          ch="); Log::println(ch);
                     continue;
                 }
             }
@@ -54,11 +45,8 @@ private:
             memcpy(this->_message + this->_message_len, &data_buf[1], chunk);
             this->_message_len += chunk;
 
-            Log::print("data received ch="); Log::println(ch);
-
             this->radioInit(ch, ResponsePacket::SIZE);
             this->txPacket(ack_buf);
-            Log::print("ack sent      ch="); Log::println(ch);
 
             if (data_buf[0] & DataPacket::IS_LAST) {
                 this->_message[this->_message_len] = '\0';
@@ -78,7 +66,6 @@ private:
                 }
                 this->radioInit(ch, ResponsePacket::SIZE);
                 this->txPacket(ack_buf);
-                Log::print("re-ack        ch="); Log::println(ch);
             }
             ch = ch_next;
         }
@@ -89,7 +76,6 @@ private:
         HandshakePacket response = HandshakePacket::build(id, this->_crypto);
 
         Log::println("=== Receiver ===");
-        response.print();
 
         static uint8_t tx_buf[HandshakePacket::SIZE];
         response.toBytes(tx_buf);
@@ -104,12 +90,8 @@ private:
 
             HandshakePacket beacon = HandshakePacket::fromBytes(rx_buf);
 
-            Log::println("=== Received beacon ===");
-            beacon.print();
-
             delay(1); // turnaround guard
             this->txPacket(tx_buf);
-            Log::println("Response sent.");
             return beacon;
         }
     }
