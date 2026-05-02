@@ -6,6 +6,7 @@
 #include "nrf_cc310/include/crys_ecpki_domain.h"
 #include "nrf_cc310/include/crys_ecpki_dh.h"
 #include "nrf_cc310/include/crys_rnd.h"
+#include "nrf_cc310/include/ssi_aes.h"
 #include "signing_scheme.hpp"
 
 /**
@@ -120,8 +121,46 @@ public:
         return err == CRYS_OK;
     }
 
+    void setSharedKey(const uint8_t* key_bytes) override {
+        memcpy(this->_aes_key, key_bytes, sizeof(this->_aes_key));
+    }
+
+    bool encrypt(const uint8_t* in, uint8_t* out, uint8_t len) override {
+        return this->aesCtr(in, out, len);
+    }
+
+    bool decrypt(const uint8_t* in, uint8_t* out, uint8_t len) override {
+        return this->aesCtr(in, out, len);
+    }
+
 private:
     nRFCrypto_ECC            _ecc;
     nRFCrypto_ECC_PrivateKey _private_key;
     nRFCrypto_ECC_PublicKey  _public_key;
+    uint8_t                  _aes_key[16] = {};
+
+    // AES-128-CTR using only the encrypt path (CC310 decrypt is non-functional).
+    // Keystream = AES_encrypt(key, zero_nonce); both encrypt and decrypt are keystream XOR data.
+    bool aesCtr(const uint8_t* in, uint8_t* out, uint8_t len) {
+        uint8_t nonce[16]     = {};
+        uint8_t keystream[16] = {};
+
+        SaSiAesUserContext_t ctx;
+        SaSiAesUserKeyData_t key_data = { this->_aes_key, sizeof(this->_aes_key) };
+
+        SaSiError_t err;
+
+        err = SaSi_AesInit(&ctx, SASI_AES_ENCRYPT, SASI_AES_MODE_ECB, SASI_AES_PADDING_NONE);
+        if (err != SASI_OK) { Log::print("AesInit err="); Log::print(err, HEX); Log::println(); return false; }
+
+        err = SaSi_AesSetKey(&ctx, SASI_AES_USER_KEY, &key_data, sizeof(key_data));
+        if (err != SASI_OK) { Log::print("AesSetKey err="); Log::print(err, HEX); Log::println(); return false; }
+
+        size_t out_size = sizeof(keystream);
+        err = SaSi_AesFinish(&ctx, sizeof(nonce), nonce, sizeof(nonce), keystream, &out_size);
+        if (err != SASI_OK) { Log::print("AesFinish err="); Log::print(err, HEX); Log::println(); return false; }
+
+        for (uint8_t i = 0; i < len; i++) out[i] = in[i] ^ keystream[i];
+        return true;
+    }
 };

@@ -6,7 +6,7 @@ class ReceiverLifeCycle : public LifeCycle {
 public:
     void startLifeCycle() override {
         this->radioInit(DISCOVERY_CHANNEL);
-        HandshakePacket peer = this->startListening();
+        HandshakePacket peer = this->startDiscovering();
         uint8_t shared[32] = {};
         this->_crypto->computeSharedSecret(peer.content.public_key, shared, sizeof(shared));
         Log::print("Shared secret: ");
@@ -16,10 +16,53 @@ public:
             Log::print(" ");
         }
         Log::println();
+
+        this->_crypto->setSharedKey(shared);
+        this->_fhop = FHop::fromSecret(shared);
+        this->startReceiving();
     }
 
 private:
-    HandshakePacket startListening() {
+    void startReceiving() {
+        static uint8_t enc_buf[DataPacket::SIZE]  = {};
+        static uint8_t data_buf[DataPacket::SIZE] = {};
+        static uint8_t ack_buf[AckPacket::SIZE]   = {AckPacket::MAGIC};
+
+        while (true) {
+            uint8_t ch = this->_fhop.next();
+
+            this->radioInit(ch, DataPacket::SIZE);
+            this->rxPacket(enc_buf, 0xFFFFFFFF);
+            this->_crypto->decrypt(enc_buf, data_buf, DataPacket::SIZE);
+
+            constexpr uint8_t PAYLOAD_SIZE = DataPacket::SIZE - 1;
+            uint8_t chunk = (data_buf[0] & DataPacket::IS_LAST)
+                ? strnlen((char*)&data_buf[1], PAYLOAD_SIZE)
+                : PAYLOAD_SIZE;
+            memcpy(this->_message + this->_message_len, &data_buf[1], chunk);
+            this->_message_len += chunk;
+
+            Log::print("data received ch="); Log::println(ch);
+            Log::print("  text: ");
+            for (uint8_t j = 0; j < chunk; j++) Log::print((char)data_buf[1 + j]);
+            Log::println();
+            delay(1000);
+
+            this->radioInit(ch, AckPacket::SIZE);
+            this->txPacket(ack_buf);
+            Log::print("ack sent      ch="); Log::println(ch);
+
+            if (data_buf[0] & DataPacket::IS_LAST) {
+                this->_message[this->_message_len] = '\0';
+                Log::println("=== Message ===");
+                Log::println(this->_message);
+                Log::println("Transmission complete.");
+                break;
+            }
+        }
+    }
+
+    HandshakePacket startDiscovering() {
         const uint8_t id[] = {0xCA, 0xFE, 0xBA, 0xBE};
         HandshakePacket response = HandshakePacket::build(id, this->_crypto);
 

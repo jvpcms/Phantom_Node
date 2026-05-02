@@ -16,9 +16,52 @@ public:
             Log::print(" ");
         }
         Log::println();
+
+        this->_crypto->setSharedKey(shared);
+        this->_fhop = FHop::fromSecret(shared);
+        this->startTransmitting();
     }
 
 private:
+    void startTransmitting() {
+        static const char MESSAGE[] =
+            "Lorem ipsum dolor sit amet, consectetur adipiscing elit, "
+            "sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. "
+            "Ut enim ad minim veniam, quis nostrud exercitation ullamco.";
+
+        constexpr uint16_t MSG_LEN      = sizeof(MESSAGE) - 1;
+        constexpr uint8_t  PAYLOAD_SIZE = DataPacket::SIZE - 1;
+        constexpr uint16_t TOTAL        = (MSG_LEN + PAYLOAD_SIZE - 1) / PAYLOAD_SIZE;
+
+        uint8_t plain[DataPacket::SIZE]   = {};
+        uint8_t enc_buf[DataPacket::SIZE] = {};
+        uint8_t ack_buf[AckPacket::SIZE]  = {};
+
+        for (uint16_t i = 0; i < TOTAL; i++) {
+            uint16_t offset    = i * PAYLOAD_SIZE;
+            uint8_t  chunk     = (MSG_LEN - offset) < PAYLOAD_SIZE ? (MSG_LEN - offset) : PAYLOAD_SIZE;
+
+            plain[0] = (i == TOTAL - 1) ? DataPacket::IS_LAST : 0;
+            memset(&plain[1], 0, PAYLOAD_SIZE);
+            memcpy(&plain[1], MESSAGE + offset, chunk);
+
+            this->_crypto->encrypt(plain, enc_buf, DataPacket::SIZE);
+
+            uint8_t ch = this->_fhop.next();
+            this->radioInit(ch, DataPacket::SIZE);
+            this->txPacket(enc_buf);
+            Log::print("data sent     ch="); Log::println(ch);
+            Log::print("  plain: "); this->logHex(plain, DataPacket::SIZE);
+            Log::print("  enc:   "); this->logHex(enc_buf, DataPacket::SIZE);
+
+            this->radioInit(ch, AckPacket::SIZE);
+            this->rxPacket(ack_buf, 0xFFFFFFFF);
+            Log::print("ack received  ch="); Log::println(ch);
+            delay(1000);
+        }
+        Log::println("Transmission complete.");
+    }
+
     HandshakePacket startDiscoverable() {
         const uint8_t id[] = {0xDE, 0xAD, 0xBE, 0xEF};
         HandshakePacket beacon = HandshakePacket::build(id, this->_crypto);

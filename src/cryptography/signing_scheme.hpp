@@ -28,5 +28,14 @@ public:
     /** ECDH using the same key pair: computes the shared secret from the peer's raw 65-byte public key. */
     virtual bool computeSharedSecret(const uint8_t* peer_pub_raw, uint8_t* out, uint8_t out_len) = 0;
 
+    /** Store the first 16 bytes of the ECDH shared secret for AES-128 symmetric operations. */
+    virtual void setSharedKey(const uint8_t* key_bytes) = 0;
+
+    /** AES-128-ECB encrypt — len must be a multiple of 16. */
+    virtual bool encrypt(const uint8_t* in, uint8_t* out, uint8_t len) = 0;
+
+    /** AES-128-ECB decrypt — len must be a multiple of 16. */
+    virtual bool decrypt(const uint8_t* in, uint8_t* out, uint8_t len) = 0;
+
     virtual ~SigningScheme() = default;
 };

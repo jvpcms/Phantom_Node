@@ -6,8 +6,8 @@
 #include "cryptography/signing_scheme.hpp"
 #include "cryptography/nrf_signing_scheme.hpp"
 #include "config.hpp"
-
-#define PACKET_LEN HandshakePacket::SIZE
+#include "frequency_hopper.hpp"
+#include "data_packet.hpp"
 
 class LifeCycle {
 public:
@@ -24,9 +24,21 @@ public:
 
 protected:
     SigningScheme* _crypto;
+    FHop           _fhop;
+    char           _message[256]  = {};
+    uint16_t       _message_len   = 0;
 
 protected:
-    static void radioInit(uint8_t channel) {
+    static void logHex(const uint8_t* buf, uint8_t len) {
+        for (uint8_t i = 0; i < len; i++) {
+            if (buf[i] < 0x10) Log::print("0");
+            Log::print(buf[i], HEX);
+            Log::print(" ");
+        }
+        Log::println();
+    }
+
+    static void radioInit(uint8_t channel, uint8_t packet_len = HandshakePacket::SIZE) {
         NRF_RADIO->POWER = 0;
         NRF_RADIO->POWER = 1;
 
@@ -39,8 +51,8 @@ protected:
         NRF_RADIO->RXADDRESSES = 1;
 
         NRF_RADIO->PCNF0 = 0;
-        NRF_RADIO->PCNF1 = (PACKET_LEN << RADIO_PCNF1_MAXLEN_Pos)  |
-                           (PACKET_LEN << RADIO_PCNF1_STATLEN_Pos) |
+        NRF_RADIO->PCNF1 = (packet_len << RADIO_PCNF1_MAXLEN_Pos)  |
+                           (packet_len << RADIO_PCNF1_STATLEN_Pos) |
                            (4          << RADIO_PCNF1_BALEN_Pos);
 
         NRF_RADIO->CRCCNF  = (RADIO_CRCCNF_LEN_Two      << RADIO_CRCCNF_LEN_Pos) |
