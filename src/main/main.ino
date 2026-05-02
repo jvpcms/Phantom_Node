@@ -36,6 +36,7 @@ void serial_monitor_delay() {
 void setup() {
     if (NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk) {
         Serial.begin(115200);
+        while (!Serial) delay(10);
         serial_monitor_delay();
     }
 
