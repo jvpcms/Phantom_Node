@@ -2,8 +2,10 @@
 
 #include "lifecycle.hpp"
 
+/** Receiver role — listens for a beacon, completes the handshake, then receives encrypted data. */
 class ReceiverLifeCycle : public LifeCycle {
 public:
+    /** Runs discovery then derives the shared key and starts receiving. */
     void startLifeCycle() override {
         this->radioInit(DISCOVERY_CHANNEL);
         HandshakePacket peer = this->startDiscovering();
@@ -15,6 +17,12 @@ public:
     }
 
 private:
+    /**
+     * Frequency-hopping receive loop.
+     * Times out with a NACK if no data arrives within RX_TIMEOUT_MS.
+     * After an ACK is sent, uses a time-division loop to re-send the ACK on ch N while
+     * listening on ch N+1, recovering from a lost ACK without clock synchronisation.
+     */
     void startReceiving() {
         static uint8_t enc_buf[DataPacket::SIZE]       = {};
         static uint8_t data_buf[DataPacket::SIZE]      = {};
@@ -71,6 +79,7 @@ private:
         }
     }
 
+    /** Waits for a beacon with sufficient RSSI, responds with own handshake packet, returns the peer's packet. */
     HandshakePacket startDiscovering() {
         const uint8_t id[] = {0xCA, 0xFE, 0xBA, 0xBE};
         HandshakePacket response = HandshakePacket::build(id, this->_crypto);

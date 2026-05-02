@@ -23,6 +23,7 @@
  */
 class NrfSigningScheme : public SigningScheme {
 public:
+    /** Initialises nRFCrypto and generates a fresh P-256 key pair. */
     bool begin() override {
         nRFCrypto.begin();
         if (!this->_ecc.begin())                                       return false;
@@ -31,6 +32,7 @@ public:
         return nRFCrypto_ECC::genKeyPair(this->_private_key, this->_public_key);
     }
 
+    /** Signs data with the local private key via CRYS_ECDSA_Sign (SHA-256); produces a 64-byte r||s signature. */
     bool sign(const uint8_t* data, uint32_t len,
               uint8_t* sig_out, uint32_t& sig_size) override {
         uint8_t priv_raw[32];
@@ -63,6 +65,7 @@ public:
         return err == CRYS_OK;
     }
 
+    /** Verifies a 64-byte r||s signature over data using the peer's raw 65-byte uncompressed public key. */
     bool verify(const uint8_t* data, uint32_t len,
                 const uint8_t* sig, uint32_t sig_size,
                 const uint8_t* pub_key_bytes) override {
@@ -94,10 +97,12 @@ public:
         return err == CRYS_OK;
     }
 
+    /** Exports the local public key as a 65-byte uncompressed P-256 point (04 || X || Y). */
     void getPublicKey(uint8_t* out) override {
         this->_public_key.toRaw(out, 65);
     }
 
+    /** ECDH using the signing key pair: derives the shared secret from the peer's raw 65-byte public key. */
     bool computeSharedSecret(const uint8_t* peer_pub_raw, uint8_t* out, uint8_t out_len) override {
         const CRYS_ECPKI_Domain_t* domain = CRYS_ECPKI_GetEcDomain(CRYS_ECPKI_DomainID_secp256r1);
         CRYS_ECPKI_UserPublKey_t pub_key;
@@ -121,14 +126,17 @@ public:
         return err == CRYS_OK;
     }
 
+    /** Copies the first 16 bytes of the ECDH shared secret into the AES-128 key slot. */
     void setSharedKey(const uint8_t* key_bytes) override {
         memcpy(this->_aes_key, key_bytes, sizeof(this->_aes_key));
     }
 
+    /** Encrypts len bytes using AES-128-CTR. */
     bool encrypt(const uint8_t* in, uint8_t* out, uint8_t len) override {
         return this->aesCtr(in, out, len);
     }
 
+    /** Decrypts len bytes using AES-128-CTR (symmetric with encrypt). */
     bool decrypt(const uint8_t* in, uint8_t* out, uint8_t len) override {
         return this->aesCtr(in, out, len);
     }

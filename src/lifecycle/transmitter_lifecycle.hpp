@@ -2,8 +2,10 @@
 
 #include "lifecycle.hpp"
 
+/** Transmitter role — broadcasts beacons until paired, then sends encrypted data over frequency-hopping channels. */
 class TransmitterLifeCycle : public LifeCycle {
 public:
+    /** Runs discovery then derives the shared key and starts transmitting. */
     void startLifeCycle() override {
         this->radioInit(DISCOVERY_CHANNEL);
         HandshakePacket peer = this->startDiscoverable();
@@ -15,6 +17,7 @@ public:
     }
 
 private:
+    /** Frequency-hopping transmit loop; retransmits the current packet on NACK and advances on ACK. */
     void startTransmitting() {
         static const char MESSAGE[] =
             "Lorem ipsum dolor sit amet, consectetur adipiscing elit, "
@@ -58,6 +61,7 @@ private:
         Log::println("Transmission complete.");
     }
 
+    /** Broadcasts beacon until a valid signed handshake response is received; returns the peer's packet. */
     HandshakePacket startDiscoverable() {
         const uint8_t id[] = {0xDE, 0xAD, 0xBE, 0xEF};
         HandshakePacket beacon = HandshakePacket::build(id, this->_crypto);

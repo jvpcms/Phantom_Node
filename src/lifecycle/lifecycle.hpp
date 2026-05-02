@@ -9,15 +9,22 @@
 #include "frequency_hopper.hpp"
 #include "data_packet.hpp"
 
+/**
+ * Base class for transmitter and receiver lifecycles.
+ * Owns the crypto context, frequency hopper, and all NRF_RADIO helpers.
+ */
 class LifeCycle {
 public:
+    /** Initializes and starts the NrfSigningScheme (key generation). */
     LifeCycle() {
         this->_crypto = new NrfSigningScheme();
         this->_crypto->begin();
     }
 
+    /** Entry point — runs the full discovery + data transfer sequence. */
     virtual void startLifeCycle() = 0;
 
+    /** Frees the crypto context. */
     virtual ~LifeCycle() {
         delete this->_crypto;
     }
@@ -29,6 +36,7 @@ protected:
     uint16_t       _message_len   = 0;
 
 protected:
+    /** Prints a byte array as space-separated hex to the serial log. */
     static void logHex(const uint8_t* buf, uint8_t len) {
         for (uint8_t i = 0; i < len; i++) {
             if (buf[i] < 0x10) Log::print("0");
@@ -38,6 +46,7 @@ protected:
         Log::println();
     }
 
+    /** Powers and configures NRF_RADIO for the given channel and static packet length. */
     static void radioInit(uint8_t channel, uint8_t packet_len = HandshakePacket::SIZE) {
         NRF_RADIO->POWER = 0;
         NRF_RADIO->POWER = 1;
@@ -64,6 +73,7 @@ protected:
         NRF_RADIO->SHORTS = RADIO_SHORTS_ADDRESS_RSSISTART_Msk;
     }
 
+    /** Transmits one packet from buf; blocks until the radio disables. */
     static void txPacket(uint8_t* buf) {
         NRF_RADIO->PACKETPTR    = (uint32_t)buf;
         NRF_RADIO->EVENTS_READY = 0;
@@ -79,7 +89,7 @@ protected:
         while (NRF_RADIO->EVENTS_DISABLED == 0);
     }
 
-    // Returns true if a packet was received before timeout_ms elapsed.
+    /** Receives one packet into buf; returns true on CRC-OK within timeout_ms. Pass 0xFFFFFFFF to wait indefinitely. */
     static bool rxPacket(uint8_t* buf, uint32_t timeout_ms) {
         NRF_RADIO->PACKETPTR    = (uint32_t)buf;
         NRF_RADIO->EVENTS_READY = 0;
@@ -106,7 +116,7 @@ protected:
         return NRF_RADIO->CRCSTATUS == RADIO_CRCSTATUS_CRCSTATUS_CRCOk;
     }
 
-    // Returns true if the last received packet's RSSI is above the handshake threshold.
+    /** Returns true if the last received packet's RSSI exceeds the handshake threshold. */
     static bool rssiOk() {
         return NRF_RADIO->RSSISAMPLE < (uint8_t)(-RSSI_HANDSHAKE_THRESHOLD_DBM);
     }
