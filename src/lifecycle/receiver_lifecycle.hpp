@@ -93,13 +93,11 @@ private:
 
         while (true) {
             if (!this->rxPacket(rx_buf, 0xFFFFFFFF)) continue;
-
-            uint8_t rssi = NRF_RADIO->RSSISAMPLE;
-            if (rssi >= (uint8_t)(-RSSI_HANDSHAKE_THRESHOLD_DBM)) continue;
+            if (!rssiHandshakeOk()) continue;
 
             HandshakePacket beacon = HandshakePacket::fromBytes(rx_buf);
 
-            delay(1); // turnaround guard
+            delay(1);
             this->txPacket(tx_buf);
             return beacon;
         }

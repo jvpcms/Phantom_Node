@@ -113,11 +113,17 @@ protected:
         NRF_RADIO->TASKS_DISABLE   = 1;
         while (NRF_RADIO->EVENTS_DISABLED == 0);
 
+        if (!rssiOk()) return false;
         return NRF_RADIO->CRCSTATUS == RADIO_CRCSTATUS_CRCSTATUS_CRCOk;
     }
 
-    /** Returns true if the last received packet's RSSI exceeds the handshake threshold. */
+    /** Returns true if the last received packet's RSSI meets the data threshold. */
     static bool rssiOk() {
+        return NRF_RADIO->RSSISAMPLE < (uint8_t)(-RSSI_DATA_THRESHOLD_DBM);
+    }
+
+    /** Returns true if the last received packet's RSSI meets the handshake threshold. */
+    static bool rssiHandshakeOk() {
         return NRF_RADIO->RSSISAMPLE < (uint8_t)(-RSSI_HANDSHAKE_THRESHOLD_DBM);
     }
 };
