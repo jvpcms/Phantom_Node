@@ -4,7 +4,7 @@
 #include <string.h>
 
 static constexpr uint8_t  FHOP_CHANNEL_MIN   = 0;
-static constexpr uint8_t  FHOP_CHANNEL_MAX   = 99;
+static constexpr uint8_t  FHOP_CHANNEL_MAX   = 254;
 static constexpr uint8_t  FHOP_CHANNEL_COUNT = FHOP_CHANNEL_MAX - FHOP_CHANNEL_MIN + 1;
 
 /** xorshift32 PRNG-based frequency hopper producing channels in [FHOP_CHANNEL_MIN, FHOP_CHANNEL_MAX]. */
