@@ -537,7 +537,11 @@ Receives one packet into buf; returns true on CRC-OK within timeout_ms. Pass 0xF
 
 #### `static bool rssiOk()`
 
-Returns true if the last received packet's RSSI exceeds the handshake threshold.
+Returns true if the last received packet's RSSI meets the data threshold.
+
+#### `static bool rssiHandshakeOk()`
+
+Returns true if the last received packet's RSSI meets the handshake threshold.
 
 ### `lifecycle/receiver_lifecycle.hpp`
 
