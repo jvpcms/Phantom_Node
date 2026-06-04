@@ -1,46 +1,71 @@
-# Phantom_Node
+# Phantom Node
 
-ECDH key exchange and encryption over NIST P-256 targeting the ESP32 microcontroller, with a toy ECC implementation for desktop testing.
+Encrypted, authenticated radio communication between two nRF52840 nodes. Each session uses ECDH over NIST P-256 to derive a shared secret, ECDSA to authenticate handshake packets, AES-128-CTR to encrypt data, and a PRNG-based frequency hopper seeded from the shared secret to resist interception.
 
-## Dependencies
+## Protocol overview
 
-**Desktop build**
-- `g++` with C++17 support
+1. **Discovery** — transmitter broadcasts signed beacons on a fixed channel; receiver responds when RSSI meets the handshake threshold
+2. **Key exchange** — both sides derive the same shared secret via ECDH using the nRF52840 CryptoCell-310
+3. **Data transfer** — encrypted packets are sent over a frequency-hopping sequence known only to the paired nodes; each packet is confirmed with ACK/NACK
 
-**ESP32 build**
-- [`arduino-cli`](https://arduino.github.io/arduino-cli/)
-- ESP32 Arduino core: `arduino-cli core install esp32:esp32`
+## Hardware
+
+**Adafruit Feather nRF52840** × 2 — one flashed as transmitter (`-DEMITTER=1`), one as receiver (`-DEMITTER=0`).
+
+## Setup
+
+```
+arduino-cli config add board_manager.additional_urls \
+    https://adafruit.github.io/arduino-board-index/package_adafruit_index.json
+arduino-cli core update-index
+arduino-cli core install adafruit:nrf52
+make setup-nrf
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+```
 
 ## Commands
 
 | Command | Description |
 |---|---|
-| `make run` | Compile and run the desktop C++ executable |
-| `make build` | Compile the sketch for ESP32 |
-| `make upload` | Compile and upload to the board |
-| `make monitor` | Open the serial monitor (exit with Ctrl+C) |
-| `make flash` | Compile, upload, and open the serial monitor |
+| `make flash-emit` | Build transmitter firmware, flash via UF2, open serial monitor |
+| `make flash-recv` | Build receiver firmware, flash via UF2, open serial monitor |
+| `make monitor-emit` | Open serial monitor for transmitter (`PORT1`, default `/dev/ttyACM1`) |
+| `make monitor-recv` | Open serial monitor for receiver (`PORT2`, default `/dev/ttyACM0`) |
+| `make run` | Run desktop build (toy ECC, no radio) |
 
-The serial port defaults to `/dev/ttyUSB0`. Override it with:
+Override ports:
 
 ```
-make flash PORT=/dev/ttyACM0
+make flash-emit PORT1=/dev/ttyACM0
 ```
 
-All build artifacts are written to `build/` at the project root.
+Build artifacts go to `build/nrf52840/`.
 
 ## Structure
 
 ```
 src/
   main/
-    main.cpp          # Desktop entry point (toy ECC over small curve)
-    main.ino          # ESP32 entry point (P-256 via mbedTLS)
+    main.ino              # nRF52840 entry point
+  lifecycle/
+    transmitter_lifecycle.hpp   # beacon, handshake, encrypted TX
+    receiver_lifecycle.hpp      # discovery, handshake, encrypted RX
+    frequency_hopper.hpp        # xorshift32 channel sequence
+    handshake_packet.hpp        # discovery frame (device_id + public key + ECDSA sig)
+    data_packet.hpp             # encrypted data frame + ACK/NACK
+    lifecycle.hpp               # radio helpers, RSSI filtering, base class
+    factory.hpp                 # allocates TX or RX lifecycle by mode
   cryptography/
-    elliptic_curve_cryptography.hpp      # Toy ECC (long arithmetic)
-    mpi_elliptic_curve_cryptography.hpp  # P-256 via mbedTLS MPI
-    discrete_log_cryptography.hpp        # DLP-based scheme (toy)
-    abstract_cryptography/               # CRTP base classes
+    nrf_signing_scheme.hpp      # ECDSA P-256 + AES-128-CTR via CryptoCell-310
+    nrf_elliptic_curve_cryptography.hpp  # ECDH via CryptoCell-310
+    mpi_elliptic_curve_cryptography.hpp  # ECDH via mbedTLS MPI (reference)
+    elliptic_curve_cryptography.hpp      # toy ECC over small curve (desktop)
+    discrete_log_cryptography.hpp        # toy DLP scheme (desktop)
+    abstract_cryptography/              # CRTP base classes
+  config.hpp              # RSSI thresholds, timing, channel constants
+  logger.hpp              # USB-safe serial logger
   math/
-    modular.hpp       # Modular exponentiation
+    modular.hpp           # modular exponentiation
+  desktop/
+    main.cpp              # desktop entry point (toy ECC)
 ```
